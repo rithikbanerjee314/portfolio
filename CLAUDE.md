@@ -2,7 +2,7 @@
 
 Portfolio site for Rithik Banerjee (Columbia CS/Physics junior), built for job applications. This doc reflects the **current state** of the project as of 2026-07-25 (v4.1). It was rewritten from a long chronological changelog into a current-state reference — see git history / prior conversation for the blow-by-blow if ever needed; what matters going forward is what's true *now* and the lessons below that prevent re-introducing fixed bugs.
 
-**Stack**: Next.js 14 (App Router) + TypeScript + Tailwind + React Three Fiber 8 / drei 9 / three.js **0.169 (pinned — do not bump without upgrading drei/fiber/rapier in lockstep)** + `@react-three/rapier` (physics) + Framer Motion + zustand. Hosted on Vercel free tier (not yet deployed).
+**Stack**: Next.js 14 (App Router) + TypeScript + Tailwind + React Three Fiber 8 / drei 9 / three.js **0.169 (pinned — do not bump without upgrading drei/fiber/rapier in lockstep)** + `@react-three/rapier` (physics) + Framer Motion + zustand. Hosted on Vercel free tier, deployed 2026-08-03 at `https://rithikbanerjee.com` (custom domain, purchased and attached through Vercel's own domain dashboard — no separate registrar involved; Vercel project name `portfolio` under the `rithikbanerjee314s-projects` team).
 
 ## The big picture
 
@@ -277,7 +277,7 @@ All in `lib/content.ts` unless noted. As of 2026-07-31, `lib/content.ts` and `co
 - [x] `TRAILMAP.overlayIntro` — real one-liner in place.
 - [x] LinkedIn URL — `https://www.linkedin.com/in/rithik-banerjee`, confirmed real.
 - [x] Confirm GitHub handle `rithikbanerjee314` and email `rb3736@columbia.edu` are OK to publish — confirmed against the master database.
-- [x] `public/resume.pdf` — the real resume, copied 2026-08-02 from `C:\Users\rbane\dev\Summer\resume\Rithik_Banerjee_Resume.pdf` (136KB, verified served as `%PDF-1.7` at `/resume.pdf`). That folder is the source of truth; re-copy after any resume edit, it is NOT symlinked.
+- [x] `public/resume.pdf` — the real resume, re-copied 2026-08-03 from `C:\Users\rbane\dev\Summer\resume\Rithik_Banerjee_Resume.pdf` (136.6KB, verified served as `%PDF-1.7` at `/resume.pdf`). That folder is the source of truth; re-copy after any resume edit, it is NOT symlinked. This revision adds `rithikbanerjee.com` to the header contact line, now that a custom domain is attached to the Vercel deployment (see "Deploy" section) — the resume and the live site's own domain can't drift apart as long as this stays a straight re-copy rather than a one-time snapshot.
 - [ ] Fish (`fish-multiplayer`) live demo URL — the project IS deployed (Render for the server, Vercel for the static page) but no hostname is recorded anywhere in the master database, so `demo` is deliberately left unset rather than guessed. Chess's is `https://chess-smoky-xi.vercel.app` (recorded in the database, worth re-confirming).
 - [ ] Optional: live demo links, project screenshots/GIFs, headshot.
 
@@ -286,11 +286,11 @@ All in `lib/content.ts` unless noted. As of 2026-07-31, `lib/content.ts` and `co
 - Waterfall/wind/terrain are first-pass techniques (CPU sine-noise terrain, not true simplex noise; hand-rolled shaders) — functional but not perf-profiled on real low-end hardware.
 - Piano key spring constants and the fish flop tween timing are first-guess tuning, not hands-on feel-tested. Same caveat applies to the vault chest's lid-open angle/damp speed and the vault room's pedestal spacing/light intensities/camera zoom — none of this could be visually tuned from this dev environment (see quirks below).
 - No collision geometry for decorative/static meshes (chess board's decorative pawns, terrain outside the immediate station) — thrown objects can visually clip through them.
-- Site has never been deployed; only tested via local `npm run dev` (the sandboxed browser pane used during development runs hidden/rAF-frozen, so most visual verification this whole build has relied on the user's own local testing rather than automated screenshots).
+- Deployed to production, but WebGL-canvas visual verification has still only ever happened via the user's own local/real-browser testing, never from this sandbox (the sandboxed browser pane runs hidden/rAF-frozen — see quirks below) or from a Vercel preview.
 
-## Deploy (when ready)
+## Deploy
 
-`vercel` CLI or push to GitHub + import in Vercel dashboard. Static output, no env vars needed. Custom domain optional (~$10–15/yr at a registrar); free `*.vercel.app` otherwise.
+Live at `https://rithikbanerjee.com` (Vercel project `portfolio`, team `rithikbanerjee314s-projects`). The domain was purchased directly through Vercel's own dashboard (Settings → Domains) rather than a third-party registrar — nameservers, DNS, and SSL are all Vercel-managed, nothing to configure elsewhere. Every push to `master` on the GitHub repo (`rithikbanerjee314/portfolio`) auto-deploys to production; other branches/PRs get their own preview URL. Static output, no env vars needed.
 
 ## Conventions
 
