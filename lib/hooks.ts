@@ -212,7 +212,11 @@ export function useAudioPrewarm() {
     // unlock below can run synchronously.
     preloadTone();
 
-    const events = ["pointerdown", "keydown", "touchstart", "wheel"] as const;
+    // touchend and click are here specifically for older/pickier WebKit
+    // versions — see tonePlayer.ts's "iOS Safari" doc comment. Costs nothing
+    // to listen for extra event types since prewarmSynth() is a cheap no-op
+    // once audio is already unlocked and running.
+    const events = ["pointerdown", "touchstart", "touchend", "click", "keydown", "wheel"] as const;
     const trigger = () => {
       // Synchronous, inside the gesture. This used to be
       // `import("@/lib/tonePlayer").then((m) => m.prewarmSynth())`, which put

@@ -62,6 +62,57 @@
  * Tone's default 0.1s `lookAhead` adds a further flat 100ms between press and
  * sound, which is right for sequenced playback and wrong for an instrument
  * someone is clicking — lowered, not zeroed, since too low risks dropouts.
+ *
+ * ## iOS Safari: reported silent piano (hardened 2026-08-04)
+ *
+ * Everything traced above (the shared-state fix, the synchronous-unlock fix,
+ * the never-cache-a-promise fix) was already in place and, on inspection,
+ * every call site that resumes the context already does so synchronously,
+ * directly inside a real gesture handler — including `playNote()`'s cold
+ * path, which calls `prewarmSynth()` as its first statement, before any
+ * `.then()`. So this wasn't a case of finding one broken line; it's a case
+ * of iOS Safari being measurably less forgiving than every other engine
+ * about audio unlock, in ways this project has no device to reproduce or
+ * confirm against (see "Development environment quirks" in CLAUDE.md — this
+ * sandbox cannot even mount the Canvas tree the piano lives in, let alone
+ * test WebKit-specific audio behaviour). Two real, independently-documented
+ * WebKit gaps this hardens against, on top of the already-correct logic:
+ *
+ * 1. **iOS Safari can suspend an AudioContext that's been open, resumed, and
+ *    completely silent for a while — not just on tab-backgrounding** (which
+ *    `visibilitychange` already covers), but as an idle/power-saving measure
+ *    on a fully visible, foregrounded tab. A visitor exploring five other
+ *    stations before ever pressing a key produces exactly that: minutes of
+ *    an unlocked-but-silent context. The existing `contextRunning` check and
+ *    re-resume-on-every-gesture design already recover from this on the
+ *    NEXT gesture — but the piano key press itself dispatches through R3F's
+ *    synthetic pointer-event system (see lesson 47 on the ScrollControls
+ *    event-target indirection), and this project has no way to confirm from
+ *    here whether every WebKit version treats that dispatch chain as
+ *    equally "real" for activation purposes as a direct native listener.
+ * 2. `nativeAudioUnlock()` below adds the classic, library-independent iOS
+ *    unlock: create a throwaway native `AudioContext` and play a
+ *    near-zero-length silent buffer through it, synchronously, inside a
+ *    gesture. This predates every autoplay-policy API and doesn't depend on
+ *    Tone's or `standardized-audio-context`'s resume() semantics at all —
+ *    WebKit tracks audio-unlock as a per-DOCUMENT flag, set the moment ANY
+ *    AudioContext on the page successfully plays through a real gesture,
+ *    which is what lets Tone's own (separately created) context play later
+ *    without a fresh gesture of its own. Belt-and-suspenders alongside
+ *    Tone's own unlock, not a replacement for it — and it runs on every
+ *    event `useAudioPrewarm` already listens for, which now also includes
+ *    `touchend` and `click` (older WebKit's gesture-validity tracking has
+ *    historically been pickier about which native event types "count" than
+ *    Chrome's; touchstart/pointerdown alone may not be the full set on every
+ *    iOS version still in the wild).
+ *
+ * Not fixable from here at all: iOS's physical mute/ring switch silences Web
+ * Audio API output outright, with no JS-visible signal and no API to
+ * override it from a web page (only native apps can set an AVAudioSession
+ * category that bypasses it). If sound is still missing after this on a real
+ * device, that switch is the next thing to check — it's a very common false
+ * alarm for "the website's audio doesn't work on my phone," and this file
+ * has no way to detect or report it.
  */
 
 type ToneModule = typeof import("tone");
@@ -106,6 +157,37 @@ function contextRunning(T: ToneModule): boolean {
     return T.getContext().state === "running";
   } catch {
     return false;
+  }
+}
+
+/**
+ * The classic, library-independent iOS Safari Web Audio unlock — see the
+ * "iOS Safari: reported silent piano" section of this file's doc comment for
+ * why this exists alongside (not instead of) Tone's own resume path. Runs at
+ * most once per page load; every call after the first is a no-op.
+ */
+let nativeUnlockAttempted = false;
+function nativeAudioUnlock() {
+  if (nativeUnlockAttempted || typeof window === "undefined") return;
+  nativeUnlockAttempted = true;
+  const Ctor =
+    window.AudioContext ??
+    (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!Ctor) return;
+  try {
+    const ctx = new Ctor();
+    const buffer = ctx.createBuffer(1, 1, 22050);
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(ctx.destination);
+    source.start(0);
+    if (ctx.state === "suspended") void ctx.resume().catch(() => {});
+    // This throwaway context has done its one job (setting WebKit's
+    // per-document audio-unlock flag) — close it rather than holding a
+    // second open AudioContext for the rest of the page's life.
+    setTimeout(() => void ctx.close().catch(() => {}), 1000);
+  } catch {
+    /* best-effort only — Tone's own unlock path still runs regardless */
   }
 }
 
@@ -181,6 +263,9 @@ function takeVoice(): SynthLike {
  * Tone module has finished downloading.
  */
 export function prewarmSynth() {
+  // Independent of everything below — see this file's "iOS Safari" doc
+  // comment. Cheap after the first call (a stored flag short-circuits it).
+  nativeAudioUnlock();
   const T = state.tone;
   if (!T) {
     preloadTone();
