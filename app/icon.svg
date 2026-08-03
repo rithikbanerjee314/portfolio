@@ -1,34 +1,33 @@
 <!--
   Tab favicon for modern browsers (Next.js's `icon.svg` static-file
-  convention — auto-detected, no code needed to wire it up). Deliberately
-  NOT the default Create Next App/Vercel triangle this project shipped with:
-  a simplified single-peak version of the low-poly mountain motif used by
-  components/ui/TrailLoader.tsx's splash screen, reusing the same terrain
-  palette (components/world/palette.ts) so the tab icon can't drift from the
-  real mountain the site is about.
+  convention — auto-detected, no code needed to wire it up). A circular
+  badge with the site owner's initials, matching the "chip" look already
+  used everywhere else on the page — the header's own initials, the
+  station-label pills, the nav pills — dark navy fill, an accent-blue ring,
+  bold light text. Colors are BG_DEEP/ACCENT_SIGNAL/SURFACE_LIGHT from
+  components/world/palette.ts, hardcoded here since a plain static SVG can't
+  import a TS module.
 
-  A plain static SVG was chosen over next/og's ImageResponse (the dynamic
-  `icon.tsx` convention) after that path hit a real bug: Next 14.2.35's
-  bundled @vercel/og throws "Invalid URL" while loading its default font on
-  Windows, because it resolves the font path via `fileURLToPath(join(import.
-  meta.url, ...))`, which breaks under the Node.js runtime on this platform.
-  Since this icon has no dynamic content — it's the same image every time —
-  a static file sidesteps that whole rendering pipeline entirely and is
-  simpler besides. app/favicon.ico is regenerated from these SAME triangle
-  coordinates by scratchpad/generate-favicon.mjs, for the legacy consumers
-  that fetch /favicon.ico directly instead of reading the <link rel="icon">
-  tag this file produces — re-run that script by hand if this SVG's
-  coordinates or colors ever change, since the two aren't otherwise linked.
+  Replaced an earlier low-poly-mountain design (see git history) at the
+  user's request for something closer to the rest of the site's visual
+  language. app/favicon.ico is regenerated to match by
+  scratchpad/generate-favicon.mjs, for the legacy consumers that fetch
+  /favicon.ico directly instead of reading the <link rel="icon"> tag this
+  file produces — re-run that script by hand if this design changes, since
+  the two aren't otherwise linked (that script hand-draws a small bitmap
+  font instead of real text — see its own comment for why).
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <defs>
-    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#1c3a63" />
-      <stop offset="100%" stop-color="#050b17" />
-    </linearGradient>
-  </defs>
-  <rect width="32" height="32" fill="url(#sky)" />
-  <polygon points="2,27 13,10 18,27" fill="#4d5566" />
-  <polygon points="13,10 22,27 18,27" fill="#6b7488" />
-  <polygon points="10,15 13,10 16,15" fill="#f2f8ff" />
+  <circle cx="16" cy="16" r="14" fill="#050b17" stroke="#2f6bff" stroke-width="2" />
+  <text
+    x="16"
+    y="16"
+    dy=".34em"
+    text-anchor="middle"
+    font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif"
+    font-weight="800"
+    font-size="13.5"
+    letter-spacing="-0.5"
+    fill="#eaf2ff"
+  >RB</text>
 </svg>

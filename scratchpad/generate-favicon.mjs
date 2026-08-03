@@ -1,6 +1,6 @@
 // Regenerates app/favicon.ico so legacy consumers that fetch `/favicon.ico`
 // directly (rather than reading the `<link rel="icon">` tag app/icon.svg
-// produces) also get the site's own mountain glyph instead of the Create
+// produces) also get the site's own initials badge instead of the Create
 // Next App/Vercel triangle this project shipped with.
 //
 // Hand-rolled rather than pulled in via an image library: this project has
@@ -15,9 +15,17 @@
 // as a single ICO directory entry is a valid, universally supported .ico
 // file on every OS/browser since Windows Vista.
 //
+// Rendering real text (app/icon.svg's "RB") without a font-rasterization
+// library means hand-drawing it: RB_FONT below is a plain 5x7 dot-matrix
+// bitmap for just the two glyphs this icon needs, laid out and scaled by
+// the same rasterizer that draws the circle/ring. It won't match the SVG's
+// real system-font letterforms exactly, but at 16-48px nobody can tell the
+// difference between a bitmap R and a system-font R — only that it reads as
+// "RB" clearly, which this achieves.
+//
 // Run with: node scratchpad/generate-favicon.mjs
 // Re-run this after any change to the icon design in app/icon.svg so the
-// two can't drift apart — the triangle coordinates and palette constants
+// two can't drift apart — the circle/ring/text layout and palette constants
 // below are deliberately kept in sync with that file by hand (there's no
 // shared source; app/icon.svg is plain markup, this is a plain rasterizer).
 import { deflateSync } from "node:zlib";
@@ -31,65 +39,96 @@ const OUT_PATH = path.join(__dirname, "..", "app", "favicon.ico");
 // Same constants as components/world/palette.ts (hex -> rgb by hand, since
 // this script runs standalone via plain `node`, not through the app's own
 // module graph).
-const SKY_DUSK = [0x1c, 0x3a, 0x63];
 const BG_DEEP = [0x05, 0x0b, 0x17];
-const ROCK_DARK = [0x4d, 0x55, 0x66];
-const ROCK_GRAY = [0x6b, 0x74, 0x88];
-const SNOW = [0xf2, 0xf8, 0xff];
+const ACCENT_SIGNAL = [0x2f, 0x6b, 0xff];
+const SURFACE_LIGHT = [0xea, 0xf2, 0xff];
 
-// Same triangle points as app/icon.tsx's 32x32 SVG, expressed as fractions
-// of the canvas so they rescale cleanly to any output size.
-const F = 32;
-const LEFT_FLANK = [[2, 27], [13, 10], [18, 27]].map(([x, y]) => [x / F, y / F]);
-const RIGHT_FLANK = [[13, 10], [22, 27], [18, 27]].map(([x, y]) => [x / F, y / F]);
-const SNOW_CAP = [[10, 15], [13, 10], [16, 15]].map(([x, y]) => [x / F, y / F]);
+// Circle geometry, as fractions of the canvas — same proportions as
+// app/icon.svg's `cx=16 cy=16 r=14` on a 32-wide viewBox, with a 2-unit ring.
+const CENTER = 0.5;
+const RADIUS = 14 / 32;
+const RING_WIDTH = 2 / 32;
 
-function pointInTriangle(px, py, [[ax, ay], [bx, by], [cx, cy]]) {
-  const d = (x1, y1, x2, y2, x3, y3) => (x1 - x3) * (y2 - y3) - (x2 - x3) * (y1 - y3);
-  const d1 = d(px, py, ax, ay, bx, by);
-  const d2 = d(px, py, bx, by, cx, cy);
-  const d3 = d(px, py, cx, cy, ax, ay);
-  const hasNeg = d1 < 0 || d2 < 0 || d3 < 0;
-  const hasPos = d1 > 0 || d2 > 0 || d3 > 0;
-  return !(hasNeg && hasPos);
+// Plain 5-wide x 7-tall dot-matrix bitmap, 1 = lit pixel, top row first —
+// just enough of a "font" for the two characters this icon needs.
+const RB_FONT = {
+  R: [
+    [1, 1, 1, 1, 0],
+    [1, 0, 0, 0, 1],
+    [1, 0, 0, 0, 1],
+    [1, 1, 1, 1, 0],
+    [1, 0, 1, 0, 0],
+    [1, 0, 0, 1, 0],
+    [1, 0, 0, 0, 1],
+  ],
+  B: [
+    [1, 1, 1, 1, 0],
+    [1, 0, 0, 0, 1],
+    [1, 0, 0, 0, 1],
+    [1, 1, 1, 1, 0],
+    [1, 0, 0, 0, 1],
+    [1, 0, 0, 0, 1],
+    [1, 1, 1, 1, 0],
+  ],
+};
+// "R" + a 1-column gap + "B" = 11 columns wide, 7 rows tall, in font units.
+const TEXT_COLS = 11;
+const TEXT_ROWS = 7;
+// Size of one font unit, as a fraction of the canvas — chosen so the whole
+// glyph block (11 x 7 units) sits comfortably inside the ring with margin
+// on every side, the same way the SVG's text sits inside its circle.
+const UNIT = 0.052;
+const TEXT_LEFT = CENTER - (TEXT_COLS * UNIT) / 2;
+const TEXT_TOP = CENTER - (TEXT_ROWS * UNIT) / 2;
+
+function glyphLit(fx, fy) {
+  const col = Math.floor((fx - TEXT_LEFT) / UNIT);
+  const row = Math.floor((fy - TEXT_TOP) / UNIT);
+  if (row < 0 || row >= TEXT_ROWS) return false;
+  if (col >= 0 && col < 5) return RB_FONT.R[row][col] === 1;
+  if (col >= 6 && col < 11) return RB_FONT.B[row][col - 6] === 1;
+  return false; // the gap column, or outside the block entirely
 }
 
-function lerp(a, b, t) {
-  return a + (b - a) * t;
+/** Returns [r,g,b,a] for one exact point — a=0 means fully transparent
+ *  (outside the circle), a=255 means fully opaque. No in-between values;
+ *  edge anti-aliasing comes from supersampling this at several sub-points
+ *  per output pixel, not from soft alpha here. */
+function sampleColor(fx, fy) {
+  const dist = Math.hypot(fx - CENTER, fy - CENTER);
+  if (dist > RADIUS) return [0, 0, 0, 0];
+  if (dist > RADIUS - RING_WIDTH) return [...ACCENT_SIGNAL, 255];
+  if (glyphLit(fx, fy)) return [...SURFACE_LIGHT, 255];
+  return [...BG_DEEP, 255];
 }
 
-/** Renders the icon at `size`x`size` with 3x3 supersampling per pixel for
- *  clean-looking diagonal triangle edges at small resolutions. */
+/** Renders at `size`x`size` with 4x4 supersampling per pixel, using
+ *  alpha-weighted ("premultiplied") averaging so the transparent-to-opaque
+ *  circle edge doesn't pick up a dark or light color fringe from whichever
+ *  side happens to dominate a given pixel. */
 function renderRGBA(size) {
-  const SS = 3;
+  const SS = 4;
   const pixels = new Uint8Array(size * size * 4);
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
-      let r = 0, g = 0, b = 0;
+      let rSum = 0, gSum = 0, bSum = 0, aSum = 0;
       for (let sy = 0; sy < SS; sy++) {
         for (let sx = 0; sx < SS; sx++) {
           const fx = (x + (sx + 0.5) / SS) / size;
           const fy = (y + (sy + 0.5) / SS) / size;
-          // Background: vertical gradient, sky at top to deep navy at bottom.
-          let [pr, pg, pb] = [
-            lerp(SKY_DUSK[0], BG_DEEP[0], fy),
-            lerp(SKY_DUSK[1], BG_DEEP[1], fy),
-            lerp(SKY_DUSK[2], BG_DEEP[2], fy),
-          ];
-          if (pointInTriangle(fx, fy, LEFT_FLANK)) [pr, pg, pb] = ROCK_DARK;
-          if (pointInTriangle(fx, fy, RIGHT_FLANK)) [pr, pg, pb] = ROCK_GRAY;
-          if (pointInTriangle(fx, fy, SNOW_CAP)) [pr, pg, pb] = SNOW;
-          r += pr;
-          g += pg;
-          b += pb;
+          const [r, g, b, a] = sampleColor(fx, fy);
+          rSum += r * a;
+          gSum += g * a;
+          bSum += b * a;
+          aSum += a;
         }
       }
-      const n = SS * SS;
       const i = (y * size + x) * 4;
-      pixels[i] = Math.round(r / n);
-      pixels[i + 1] = Math.round(g / n);
-      pixels[i + 2] = Math.round(b / n);
-      pixels[i + 3] = 255;
+      const alpha = Math.round(aSum / (SS * SS));
+      pixels[i] = aSum > 0 ? Math.round(rSum / aSum) : 0;
+      pixels[i + 1] = aSum > 0 ? Math.round(gSum / aSum) : 0;
+      pixels[i + 2] = aSum > 0 ? Math.round(bSum / aSum) : 0;
+      pixels[i + 3] = alpha;
     }
   }
   return pixels;
